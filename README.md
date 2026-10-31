@@ -3,7 +3,7 @@
 > **PromptWars x OUTLIER'2026** — _Google for Developers x Hack2skill_  
 > **Challenge Track**: Gamify a painful digital chore, with the game executing the real chore in the background.
 
-[![CI Status](https://github.com/storage-invaders/storage-invaders/actions/workflows/ci.yml/badge.svg)](https://github.com/storage-invaders/storage-invaders/actions)
+[![CI Status](https://github.com/satyamicso/storage-invaders/actions/workflows/ci.yml/badge.svg)](https://github.com/satyamicso/storage-invaders/actions)
 [![WCAG 2.2 AA Compliant](https://img.shields.io/badge/Accessibility-WCAG%202.2%20AA-success.svg)](docs/SPEC.md)
 [![TypeScript Strict](https://img.shields.io/badge/TypeScript-5.5%20Strict-blue.svg)](tsconfig.json)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -298,7 +298,7 @@ The `.github/workflows/ci.yml` pipeline runs on every push and pull request:
 #### 1. Clone & Install
 
 ```bash
-git clone https://github.com/storage-invaders/storage-invaders.git
+git clone https://github.com/satyamicso/storage-invaders.git
 cd storage-invaders
 npm install --legacy-peer-deps
 ```
