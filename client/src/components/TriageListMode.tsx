@@ -143,7 +143,7 @@ export const TriageListMode: React.FC<TriageListModeProps> = ({
                               type="button"
                               className="list-trash-btn"
                               onClick={() => onTrash(item.file, item.analysis)}
-                              aria-label={`Move ${item.file.name} to trash`}
+                              aria-label={`Trash ${item.file.name}`}
                             >
                               🗑 Trash
                             </button>
@@ -151,7 +151,7 @@ export const TriageListMode: React.FC<TriageListModeProps> = ({
                               type="button"
                               className="list-keep-btn"
                               onClick={() => onKeep(item.file)}
-                              aria-label={`Mark ${item.file.name} as kept`}
+                              aria-label={`Keep ${item.file.name}`}
                             >
                               🛡 Keep
                             </button>

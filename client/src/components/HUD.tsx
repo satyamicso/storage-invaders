@@ -5,9 +5,12 @@ import { formatBytes } from '../game/renderer/canvasRenderer';
 interface HUDProps {
   stats: EngineStats;
   mode: 'demo' | 'drive';
+  aiSource: 'gemini' | 'heuristic';
+  speedMultiplier: number;
   isMuted: boolean;
   isPaused: boolean;
   isListMode: boolean;
+  onChangeSpeed: (speed: number) => void;
   onToggleMute: () => void;
   onTogglePause: () => void;
   onToggleListMode: () => void;
@@ -16,9 +19,12 @@ interface HUDProps {
 export const HUD: React.FC<HUDProps> = ({
   stats,
   mode,
+  aiSource,
+  speedMultiplier,
   isMuted,
   isPaused,
   isListMode,
+  onChangeSpeed,
   onToggleMute,
   onTogglePause,
   onToggleListMode,
@@ -29,6 +35,12 @@ export const HUD: React.FC<HUDProps> = ({
         <div className="mode-badge" title="Running in zero-login demo sandbox">
           <span className="dot" aria-hidden="true" />
           <span>{mode === 'demo' ? 'DEMO SANDBOX' : 'GOOGLE DRIVE'}</span>
+        </div>
+        <div
+          className={`ai-source-badge ${aiSource === 'gemini' ? 'gemini-active' : 'heuristic-active'}`}
+          title={aiSource === 'gemini' ? 'Triage powered by live Gemini 2.5 Flash' : 'Triage powered by rule-based heuristic fallback'}
+        >
+          {aiSource === 'gemini' ? '✦ Gemini 2.5' : '⚙ Heuristic'}
         </div>
         <div className="metric-box">
           <span className="metric-label">WAVE</span>
@@ -61,6 +73,24 @@ export const HUD: React.FC<HUDProps> = ({
       </div>
 
       <div className="hud-right">
+        {/* Game speed selector for accessibility & cognitive comfort */}
+        <div className="speed-selector" role="group" aria-label="Game Speed">
+          <label htmlFor="speed-select" className="sr-only">Game Speed</label>
+          <select
+            id="speed-select"
+            className="hud-select"
+            value={speedMultiplier}
+            onChange={(e) => onChangeSpeed(parseFloat(e.target.value))}
+            aria-label="Select Game Speed"
+            title="Adjust simulation speed"
+          >
+            <option value="0.5">0.5× Speed</option>
+            <option value="0.75">0.75× Speed</option>
+            <option value="1">1.0× Speed</option>
+            <option value="1.25">1.25× Speed</option>
+          </select>
+        </div>
+
         <button
           type="button"
           className="hud-button"

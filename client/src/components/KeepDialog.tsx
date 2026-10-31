@@ -69,7 +69,7 @@ export const KeepDialog: React.FC<KeepDialogProps> = ({
             type="button"
             className="keep-safe-btn"
             onClick={onCancelKeep}
-            aria-label="Keep file safe and resume game"
+            aria-label="Keep Safe: Retain file and resume game"
           >
             🛡️ Keep Safe (Recommended)
           </button>
@@ -77,7 +77,7 @@ export const KeepDialog: React.FC<KeepDialogProps> = ({
             type="button"
             className="trash-anyway-btn"
             onClick={onConfirmTrashAnyway}
-            aria-label="Trash file anyway and resume game"
+            aria-label="Trash Anyway: Move guarded file to trash"
           >
             🗑️ Trash Anyway
           </button>

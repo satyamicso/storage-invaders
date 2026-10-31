@@ -173,11 +173,20 @@ export class GameEngine {
     }
   }
 
-  public rollbackTrash(fileId: string, bytes: number): void {
+  public rollbackTrash(
+    fileId: string,
+    bytes: number,
+    fileMeta?: FileMeta,
+    analysis?: Analysis
+  ): void {
     this.stats.pendingFreedBytes = Math.max(0, this.stats.pendingFreedBytes - bytes);
     const target = this.asteroids.find((a) => a.id === fileId);
-    if (target && target.state === 'pending_trash') {
+    if (target) {
       target.state = 'active';
+      target.shatterProgress = 0;
+    } else if (fileMeta && analysis) {
+      // Re-spawn asteroid from top so user sees the undone file returned to play
+      this.pendingSpawnQueue.unshift({ file: fileMeta, analysis });
     }
   }
 
@@ -273,7 +282,10 @@ export class GameEngine {
     // Check collisions: Bullets vs Asteroids
     this.handleCollisions();
 
-    // Update particles
+    // Update particles with strict cap
+    if (this.particles.length > 100) {
+      this.particles.splice(0, this.particles.length - 100);
+    }
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];
       p.x += p.vx * effectiveDt;

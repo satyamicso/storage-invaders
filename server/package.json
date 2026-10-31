@@ -12,6 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@google/genai": "^2.32.0",
     "@storage-invaders/shared": "*",
     "compression": "^1.7.5",
     "cookie-parser": "^1.4.7",

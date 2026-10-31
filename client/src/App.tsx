@@ -5,6 +5,7 @@ import { SoundSynthesizer } from './game/audio/synth';
 import { DemoProvider } from './providers/demoProvider';
 import { HeuristicClassifier } from './providers/heuristic';
 import { ActionQueue, type QueuedAction } from './queue/actionQueue';
+import { analyzeFilesApi } from './services/api';
 import type { Asteroid, EngineStats } from './game/engine/types';
 import type { FileMeta, Analysis } from '@storage-invaders/shared';
 
@@ -23,6 +24,12 @@ export const App: React.FC = () => {
   const queueRef = useRef<ActionQueue | null>(null);
   const providerRef = useRef<DemoProvider | null>(null);
 
+  // Cache for prefetched wave analyses
+  const prefetchedWaveRef = useRef<{
+    waveNumber: number;
+    files: Array<{ file: FileMeta; analysis: Analysis }>;
+  } | null>(null);
+
   const [stats, setStats] = useState<EngineStats>({
     score: 0,
     confirmedFreedBytes: 0,
@@ -36,6 +43,8 @@ export const App: React.FC = () => {
     escapedCount: 0,
   });
 
+  const [aiSource, setAiSource] = useState<'gemini' | 'heuristic'>('heuristic');
+  const [speedMultiplier, setSpeedMultiplier] = useState<number>(1.0);
   const [pendingActions, setPendingActions] = useState<QueuedAction[]>([]);
   const [confirmedActions, setConfirmedActions] = useState<QueuedAction[]>([]);
   const [guardedAsteroid, setGuardedAsteroid] = useState<Asteroid | null>(null);
@@ -57,6 +66,32 @@ export const App: React.FC = () => {
     }>
   >([]);
 
+  // Asynchronous prefetch of next wave's triage while current wave plays
+  const triggerNextWavePrefetch = useCallback(async (nextWaveNum: number) => {
+    const provider = providerRef.current;
+    if (!provider) return;
+
+    try {
+      const candidates = await provider.listCandidates(40);
+      const nextBatch = candidates.slice(20, 40);
+
+      if (nextBatch.length > 0) {
+        const { analyses } = await analyzeFilesApi(nextBatch);
+        const filesWithAnalysis = nextBatch.map((file, idx) => ({
+          file,
+          analysis: analyses[idx] || HeuristicClassifier.classify(file),
+        }));
+
+        prefetchedWaveRef.current = {
+          waveNumber: nextWaveNum,
+          files: filesWithAnalysis,
+        };
+      }
+    } catch (err) {
+      console.warn('Next wave prefetch failed (non-critical):', err);
+    }
+  }, []);
+
   // 1. Initialize Engine, Provider, and Queue once on mount
   useEffect(() => {
     const provider = new DemoProvider(50);
@@ -68,10 +103,16 @@ export const App: React.FC = () => {
     const synth = new SoundSynthesizer(false);
     synthRef.current = synth;
 
+    // Detect OS reduced motion preference
+    const prefersReducedMotion =
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
     const engine = new GameEngine({
       worldWidth: 800,
       worldHeight: 600,
       fixedDt: 1 / 60,
+      reducedMotion: prefersReducedMotion,
     });
     engineRef.current = engine;
 
@@ -84,7 +125,12 @@ export const App: React.FC = () => {
     });
 
     queue.onRollback((file) => {
-      engine.rollbackTrash(file.id, file.size);
+      engine.rollbackTrash(
+        file.id,
+        file.size,
+        file,
+        HeuristicClassifier.classify(file)
+      );
       setStats({ ...engine.stats });
       setAnnouncement(`Trashing undone for ${file.name}.`);
       synth.playUndo();
@@ -135,13 +181,15 @@ export const App: React.FC = () => {
       }
     });
 
-    // Load initial wave files from DemoProvider
+    // Load initial wave files from DemoProvider with real Gemini/API triage
     const loadInitialWave = async () => {
       const candidates = await provider.listCandidates(20);
-      const analyses = HeuristicClassifier.classifyBatch(candidates);
+      const { analyses, source } = await analyzeFilesApi(candidates);
+      setAiSource(source);
+
       const waveFiles = candidates.map((file, idx) => ({
         file,
-        analysis: analyses[idx],
+        analysis: analyses[idx] || HeuristicClassifier.classify(file),
       }));
 
       engine.loadWave({ waveNumber: 1, files: waveFiles });
@@ -153,6 +201,9 @@ export const App: React.FC = () => {
         }))
       );
       setStats({ ...engine.stats });
+
+      // Trigger prefetch for Wave 2
+      triggerNextWavePrefetch(2);
     };
 
     loadInitialWave();
@@ -160,7 +211,7 @@ export const App: React.FC = () => {
     return () => {
       queue.clear();
     };
-  }, []);
+  }, [triggerNextWavePrefetch]);
 
   // 2. Setup Canvas Renderer and Game Loop
   useEffect(() => {
@@ -289,6 +340,13 @@ export const App: React.FC = () => {
     setIsMuted(muted);
   };
 
+  const handleChangeSpeed = (speed: number) => {
+    setSpeedMultiplier(speed);
+    if (engineRef.current) {
+      engineRef.current.setSpeedMultiplier(speed);
+    }
+  };
+
   const handleUndo = (id: string) => {
     queueRef.current?.undo(id);
     setListItems((prev) =>
@@ -381,12 +439,25 @@ export const App: React.FC = () => {
     if (!provider || !engine) return;
 
     const nextWaveNum = stats.wave + 1;
-    const candidates = await provider.listCandidates(20);
-    const analyses = HeuristicClassifier.classifyBatch(candidates);
-    const waveFiles = candidates.map((file, idx) => ({
-      file,
-      analysis: analyses[idx],
-    }));
+
+    // Check if next wave was already prefetched
+    let waveFiles: Array<{ file: FileMeta; analysis: Analysis }>;
+    if (
+      prefetchedWaveRef.current &&
+      prefetchedWaveRef.current.waveNumber === nextWaveNum &&
+      prefetchedWaveRef.current.files.length > 0
+    ) {
+      waveFiles = prefetchedWaveRef.current.files;
+      prefetchedWaveRef.current = null;
+    } else {
+      const candidates = await provider.listCandidates(20);
+      const { analyses, source } = await analyzeFilesApi(candidates);
+      setAiSource(source);
+      waveFiles = candidates.map((file, idx) => ({
+        file,
+        analysis: analyses[idx] || HeuristicClassifier.classify(file),
+      }));
+    }
 
     engine.loadWave({ waveNumber: nextWaveNum, files: waveFiles });
     setListItems(
@@ -397,6 +468,9 @@ export const App: React.FC = () => {
       }))
     );
     setIsWaveComplete(false);
+
+    // Trigger prefetch for wave + 1
+    triggerNextWavePrefetch(nextWaveNum + 1);
   };
 
   return (
@@ -415,9 +489,12 @@ export const App: React.FC = () => {
       <HUD
         stats={stats}
         mode="demo"
+        aiSource={aiSource}
+        speedMultiplier={speedMultiplier}
         isMuted={isMuted}
         isPaused={isPaused}
         isListMode={isListMode}
+        onChangeSpeed={handleChangeSpeed}
         onToggleMute={handleToggleMute}
         onTogglePause={handleTogglePause}
         onToggleListMode={() => setIsListMode(!isListMode)}
@@ -493,6 +570,14 @@ export const App: React.FC = () => {
           onRestoreAll={handleRestoreAll}
         />
       )}
+
+      {/* Accessibility & Safety Policy Footer */}
+      <footer className="app-footer" role="contentinfo">
+        <p>
+          <strong>Security Guarantee:</strong> AI advises, human decides. Metadata only is analyzed (never file contents).
+          Trash only — permanent delete is physically impossible in this application.
+        </p>
+      </footer>
     </div>
   );
 };
