@@ -5,6 +5,7 @@ import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import { rateLimit } from 'express-rate-limit';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { analyzeRouter } from './routes/analyze.js';
 
@@ -68,9 +69,9 @@ app.get('*', (req: Request, res: Response, next) => {
   if (req.path.startsWith('/api')) {
     return next();
   }
-  res.sendFile(path.join(clientDistPath, 'index.html'), (err) => {
-    if (err) {
-      res.status(200).send('Storage Invaders API Server Active. Running in Dev Mode.');
-    }
-  });
+  const indexPath = path.join(clientDistPath, 'index.html');
+  if (fs.existsSync(indexPath)) {
+    return res.sendFile(indexPath);
+  }
+  return res.status(200).send('Storage Invaders API Server Active. Running in Dev Mode.');
 });
