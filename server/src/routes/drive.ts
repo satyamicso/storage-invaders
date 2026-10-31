@@ -52,7 +52,14 @@ driveRouter.get('/candidates', requireAuth, async (req: AuthenticatedRequest, re
     const candidates = await driveService.listCandidates(req.accessToken!, limit);
     return res.status(200).json({ files: candidates });
   } catch (err) {
-    console.error('Drive Candidates Fetch Error:', err);
+    console.error(
+      JSON.stringify({
+        level: 'ERROR',
+        route: 'GET /api/drive/candidates',
+        error: err instanceof Error ? err.message : 'Unknown Drive API error',
+        timestamp: new Date().toISOString(),
+      })
+    );
     return res.status(500).json({
       error: 'Failed to retrieve files from Google Drive.',
     });
@@ -76,7 +83,14 @@ driveRouter.post('/trash', requireAuth, async (req: AuthenticatedRequest, res: R
     );
     return res.status(200).json({ results });
   } catch (err) {
-    console.error('Drive Trash Execution Error:', err);
+    console.error(
+      JSON.stringify({
+        level: 'ERROR',
+        route: 'POST /api/drive/trash',
+        error: err instanceof Error ? err.message : 'Unknown Drive API error',
+        timestamp: new Date().toISOString(),
+      })
+    );
     return res.status(500).json({
       error: 'Failed to trash requested files in Google Drive.',
     });
@@ -100,7 +114,14 @@ driveRouter.post('/restore', requireAuth, async (req: AuthenticatedRequest, res:
     );
     return res.status(200).json({ results });
   } catch (err) {
-    console.error('Drive Restore Execution Error:', err);
+    console.error(
+      JSON.stringify({
+        level: 'ERROR',
+        route: 'POST /api/drive/restore',
+        error: err instanceof Error ? err.message : 'Unknown Drive API error',
+        timestamp: new Date().toISOString(),
+      })
+    );
     return res.status(500).json({
       error: 'Failed to restore files in Google Drive.',
     });

@@ -12,12 +12,36 @@ export const ConsentModal: React.FC<ConsentModalProps> = ({
   onConfirmConnect,
 }) => {
   const cancelBtnRef = useRef<HTMLButtonElement>(null);
+  const confirmBtnRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (isOpen && cancelBtnRef.current) {
       cancelBtnRef.current.focus();
     }
-  }, [isOpen]);
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!isOpen) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      } else if (e.key === 'Tab') {
+        if (e.shiftKey) {
+          if (document.activeElement === cancelBtnRef.current) {
+            e.preventDefault();
+            confirmBtnRef.current?.focus();
+          }
+        } else {
+          if (document.activeElement === confirmBtnRef.current) {
+            e.preventDefault();
+            cancelBtnRef.current?.focus();
+          }
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -103,6 +127,7 @@ export const ConsentModal: React.FC<ConsentModalProps> = ({
             Stay in Demo Mode
           </button>
           <button
+            ref={confirmBtnRef}
             type="button"
             className="consent-confirm-btn"
             onClick={onConfirmConnect}

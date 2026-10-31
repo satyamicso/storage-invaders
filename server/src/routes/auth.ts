@@ -92,7 +92,14 @@ authRouter.get('/callback', async (req: Request, res: Response) => {
 
     return res.redirect('/?mode=drive&auth=success');
   } catch (err) {
-    console.error('OAuth Callback Error:', err);
+    console.error(
+      JSON.stringify({
+        level: 'ERROR',
+        route: 'GET /api/auth/callback',
+        error: err instanceof Error ? err.message : 'Unknown OAuth error',
+        timestamp: new Date().toISOString(),
+      })
+    );
     return res.redirect('/?auth=error');
   }
 });

@@ -14,13 +14,38 @@ export const KeepDialog: React.FC<KeepDialogProps> = ({
   onConfirmTrashAnyway,
 }) => {
   const keepSafeBtnRef = useRef<HTMLButtonElement>(null);
+  const trashAnywayBtnRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     // Trap focus onto the safe cancel button by default
     if (asteroid && keepSafeBtnRef.current) {
       keepSafeBtnRef.current.focus();
     }
-  }, [asteroid]);
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!asteroid) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onCancelKeep();
+      } else if (e.key === 'Tab') {
+        // Tab trap between keep safe and trash anyway buttons
+        if (e.shiftKey) {
+          if (document.activeElement === keepSafeBtnRef.current) {
+            e.preventDefault();
+            trashAnywayBtnRef.current?.focus();
+          }
+        } else {
+          if (document.activeElement === trashAnywayBtnRef.current) {
+            e.preventDefault();
+            keepSafeBtnRef.current?.focus();
+          }
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [asteroid, onCancelKeep]);
 
   if (!asteroid) return null;
 
@@ -74,6 +99,7 @@ export const KeepDialog: React.FC<KeepDialogProps> = ({
             🛡️ Keep Safe (Recommended)
           </button>
           <button
+            ref={trashAnywayBtnRef}
             type="button"
             className="trash-anyway-btn"
             onClick={onConfirmTrashAnyway}
