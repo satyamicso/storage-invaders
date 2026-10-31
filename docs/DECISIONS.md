@@ -63,3 +63,24 @@
   4. Cache results in an in-memory LRU cache keyed by metadata hash.
   5. Include a deterministic `HeuristicClassifier` fallback so that server operations never fail with HTTP 500 if Gemini is unavailable or rate-limited.
 - **Consequences**: Highly efficient API quota consumption, resilient uptime, defense-in-depth against prompt injection, and honest UI status indicators (`source: "gemini"` vs `source: "heuristic"`).
+
+
+---
+
+## ADR-008: Dependency Risk & Container Isolation
+- **Status**: Accepted
+- **Context**: `npm audit` flagged vulnerabilities in devDependencies (such as `vitest`, `happy-dom`, and build tools). We need to ensure that production environments are not vulnerable.
+- **Decision**: Use a multi-stage Dockerfile that executes `npm ci --omit=dev --legacy-peer-deps` in the runtime stage. DevDependencies (including vitest, happy-dom, and eslint) are excluded from the final container artifact. The runtime image runs as an unprivileged user (`appuser:appgroup`).
+- **Consequences**: Zero devDependency exposure in production; minimal attack surface; compliant with container security best practices.
+
+---
+
+## ADR-009: Google Drive Scope Least Privilege & Quota-Aware Querying
+- **Status**: Accepted
+- **Context**: The app needs to move large forgotten files to trash. The narrower scope `https://www.googleapis.com/auth/drive.file` only allows access to files created by the app itself, which cannot clean existing user files.
+- **Decision**: Request `https://www.googleapis.com/auth/drive` scope, but strictly constrain runtime behavior:
+  1. No permanent deletion endpoints (`files.delete` and `emptyTrash` are barred from code).
+  2. Query non-folder files owned by the user, ordered by `quotaBytesUsed desc`.
+  3. Filter out Google Docs/Sheets/Slides since they consume zero storage quota.
+  4. Use a strict `fields` mask (`id, name, mimeType, size, modifiedTime, viewedByMeTime, parents`) to minimize bandwidth and memory consumption.
+- **Consequences**: Enables genuine cleanup of real large user files while strictly enforcing non-destructive trash-only operations.
