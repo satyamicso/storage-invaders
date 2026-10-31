@@ -5,6 +5,7 @@ import { formatBytes } from '../game/renderer/canvasRenderer';
 interface HUDProps {
   stats: EngineStats;
   mode: 'demo' | 'drive';
+  userEmail?: string;
   aiSource: 'gemini' | 'heuristic';
   speedMultiplier: number;
   isMuted: boolean;
@@ -14,11 +15,14 @@ interface HUDProps {
   onToggleMute: () => void;
   onTogglePause: () => void;
   onToggleListMode: () => void;
+  onOpenConnect: () => void;
+  onDisconnect: () => void;
 }
 
 export const HUD: React.FC<HUDProps> = ({
   stats,
   mode,
+  userEmail,
   aiSource,
   speedMultiplier,
   isMuted,
@@ -28,20 +32,44 @@ export const HUD: React.FC<HUDProps> = ({
   onToggleMute,
   onTogglePause,
   onToggleListMode,
+  onOpenConnect,
+  onDisconnect,
 }) => {
   return (
     <header className="hud-container" role="banner" aria-label="Game HUD">
       <div className="hud-left">
-        <div className="mode-badge" title="Running in zero-login demo sandbox">
+        <div className="mode-badge" title={mode === 'demo' ? 'Running in zero-login demo sandbox' : `Connected as ${userEmail}`}>
           <span className="dot" aria-hidden="true" />
-          <span>{mode === 'demo' ? 'DEMO SANDBOX' : 'GOOGLE DRIVE'}</span>
+          <span>{mode === 'demo' ? 'DEMO SANDBOX' : `DRIVE: ${userEmail || 'Connected'}`}</span>
         </div>
+
+        {mode === 'demo' ? (
+          <button
+            type="button"
+            className="connect-drive-hud-btn"
+            onClick={onOpenConnect}
+            aria-label="Connect your real Google Drive account"
+          >
+            📁 Connect Drive
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="disconnect-hud-btn"
+            onClick={onDisconnect}
+            aria-label="Disconnect Google Drive and return to Demo mode"
+          >
+            ✕ Demo Mode
+          </button>
+        )}
+
         <div
           className={`ai-source-badge ${aiSource === 'gemini' ? 'gemini-active' : 'heuristic-active'}`}
           title={aiSource === 'gemini' ? 'Triage powered by live Gemini 2.5 Flash' : 'Triage powered by rule-based heuristic fallback'}
         >
           {aiSource === 'gemini' ? '✦ Gemini 2.5' : '⚙ Heuristic'}
         </div>
+
         <div className="metric-box">
           <span className="metric-label">WAVE</span>
           <span className="metric-value">{stats.wave}</span>

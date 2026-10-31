@@ -8,6 +8,8 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { analyzeRouter } from './routes/analyze.js';
+import { authRouter } from './routes/auth.js';
+import { driveRouter } from './routes/drive.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -60,6 +62,8 @@ app.get('/healthz', (_req: Request, res: Response) => {
 // Mount API routes
 app.use('/api', apiLimiter);
 app.use('/api/analyze', analyzeRouter);
+app.use('/api/auth', authRouter);
+app.use('/api/drive', driveRouter);
 
 // Serve built frontend assets in production
 const clientDistPath = path.resolve(__dirname, '../../client/dist');

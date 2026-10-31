@@ -3,7 +3,9 @@ import { GameEngine } from './game/engine/engine';
 import { CanvasRenderer } from './game/renderer/canvasRenderer';
 import { SoundSynthesizer } from './game/audio/synth';
 import { DemoProvider } from './providers/demoProvider';
+import { DriveProvider } from './providers/driveProvider';
 import { HeuristicClassifier } from './providers/heuristic';
+import type { FileProvider } from './providers/types';
 import { ActionQueue, type QueuedAction } from './queue/actionQueue';
 import { analyzeFilesApi } from './services/api';
 import type { Asteroid, EngineStats } from './game/engine/types';
@@ -15,6 +17,7 @@ import { KeepDialog } from './components/KeepDialog';
 import { EndScreen } from './components/EndScreen';
 import { Tooltip } from './components/Tooltip';
 import { TriageListMode } from './components/TriageListMode';
+import { ConsentModal } from './components/ConsentModal';
 
 export const App: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -22,13 +25,18 @@ export const App: React.FC = () => {
   const rendererRef = useRef<CanvasRenderer | null>(null);
   const synthRef = useRef<SoundSynthesizer | null>(null);
   const queueRef = useRef<ActionQueue | null>(null);
-  const providerRef = useRef<DemoProvider | null>(null);
+  const providerRef = useRef<FileProvider | null>(null);
 
   // Cache for prefetched wave analyses
   const prefetchedWaveRef = useRef<{
     waveNumber: number;
     files: Array<{ file: FileMeta; analysis: Analysis }>;
   } | null>(null);
+
+  const [mode, setMode] = useState<'demo' | 'drive'>('demo');
+  const [userEmail, setUserEmail] = useState<string | undefined>(undefined);
+  const [isConsentOpen, setIsConsentOpen] = useState(false);
+  const [sessionExpiredNotice, setSessionExpiredNotice] = useState(false);
 
   const [stats, setStats] = useState<EngineStats>({
     score: 0,
@@ -92,18 +100,17 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  // 1. Initialize Engine, Provider, and Queue once on mount
+  // 1. Initialize Engine, Provider, and Queue
   useEffect(() => {
-    const provider = new DemoProvider(50);
-    providerRef.current = provider;
+    let activeProvider: FileProvider = new DemoProvider(50);
+    providerRef.current = activeProvider;
 
-    const queue = new ActionQueue(provider, 5000);
+    const queue = new ActionQueue(activeProvider, 5000);
     queueRef.current = queue;
 
     const synth = new SoundSynthesizer(false);
     synthRef.current = synth;
 
-    // Detect OS reduced motion preference
     const prefersReducedMotion =
       typeof window !== 'undefined' &&
       window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -116,7 +123,6 @@ export const App: React.FC = () => {
     });
     engineRef.current = engine;
 
-    // Connect Queue callbacks to Engine scoring
     queue.onConfirm((file) => {
       engine.confirmTrash(file.id, file.size);
       setStats({ ...engine.stats });
@@ -152,7 +158,6 @@ export const App: React.FC = () => {
       setConfirmedActions(queue.getConfirmedActions());
     });
 
-    // Listen to Engine events
     engine.addEventListener((e) => {
       if (e.type === 'laser_fire') {
         synth.playLaser();
@@ -181,32 +186,53 @@ export const App: React.FC = () => {
       }
     });
 
-    // Load initial wave files from DemoProvider with real Gemini/API triage
-    const loadInitialWave = async () => {
-      const candidates = await provider.listCandidates(20);
-      const { analyses, source } = await analyzeFilesApi(candidates);
-      setAiSource(source);
+    // Check auth status for Drive Mode
+    const initSession = async () => {
+      try {
+        const authRes = await fetch('/api/auth/me');
+        const authData = await authRes.json();
 
-      const waveFiles = candidates.map((file, idx) => ({
-        file,
-        analysis: analyses[idx] || HeuristicClassifier.classify(file),
-      }));
+        if (authData.authenticated && authData.user) {
+          activeProvider = new DriveProvider();
+          providerRef.current = activeProvider;
+          queue.setProvider(activeProvider);
+          setMode('drive');
+          setUserEmail(authData.user.email);
+        }
+      } catch (err) {
+        console.warn('Auth check defaulted to Demo mode:', err);
+      }
 
-      engine.loadWave({ waveNumber: 1, files: waveFiles });
-      setListItems(
-        waveFiles.map((wf) => ({
-          file: wf.file,
-          analysis: wf.analysis,
-          status: 'active',
-        }))
-      );
-      setStats({ ...engine.stats });
+      // Load initial wave
+      try {
+        const candidates = await activeProvider.listCandidates(20);
+        const { analyses, source } = await analyzeFilesApi(candidates);
+        setAiSource(source);
 
-      // Trigger prefetch for Wave 2
-      triggerNextWavePrefetch(2);
+        const waveFiles = candidates.map((file, idx) => ({
+          file,
+          analysis: analyses[idx] || HeuristicClassifier.classify(file),
+        }));
+
+        engine.loadWave({ waveNumber: 1, files: waveFiles });
+        setListItems(
+          waveFiles.map((wf) => ({
+            file: wf.file,
+            analysis: wf.analysis,
+            status: 'active',
+          }))
+        );
+        setStats({ ...engine.stats });
+
+        triggerNextWavePrefetch(2);
+      } catch (err) {
+        if (err instanceof Error && err.message.includes('UNAUTHORIZED')) {
+          setSessionExpiredNotice(true);
+        }
+      }
     };
 
-    loadInitialWave();
+    initSession();
 
     return () => {
       queue.clear();
@@ -251,7 +277,7 @@ export const App: React.FC = () => {
   // 3. Keyboard input handling
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (guardedAsteroid) return; // Modal is active
+      if (guardedAsteroid || isConsentOpen) return;
 
       const engine = engineRef.current;
       if (!engine) return;
@@ -294,7 +320,7 @@ export const App: React.FC = () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [guardedAsteroid]);
+  }, [guardedAsteroid, isConsentOpen]);
 
   // 4. Mouse Move for Asteroid Tooltip
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -391,6 +417,21 @@ export const App: React.FC = () => {
     setAnnouncement(`Guarded file ${file.name} sent to trash queue.`);
   };
 
+  const handleDisconnect = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    const demo = new DemoProvider(50);
+    providerRef.current = demo;
+    queueRef.current?.setProvider(demo);
+    setMode('demo');
+    setUserEmail(undefined);
+    window.location.href = '/';
+  };
+
+  const handleStartOAuthConnect = () => {
+    setIsConsentOpen(false);
+    window.location.href = '/api/auth/login';
+  };
+
   // List Mode Handlers
   const handleListTrash = (file: FileMeta, analysis: Analysis) => {
     if (analysis.verdict === 'keep') {
@@ -440,7 +481,6 @@ export const App: React.FC = () => {
 
     const nextWaveNum = stats.wave + 1;
 
-    // Check if next wave was already prefetched
     let waveFiles: Array<{ file: FileMeta; analysis: Analysis }>;
     if (
       prefetchedWaveRef.current &&
@@ -469,7 +509,6 @@ export const App: React.FC = () => {
     );
     setIsWaveComplete(false);
 
-    // Trigger prefetch for wave + 1
     triggerNextWavePrefetch(nextWaveNum + 1);
   };
 
@@ -488,7 +527,8 @@ export const App: React.FC = () => {
       {/* Persistent HUD */}
       <HUD
         stats={stats}
-        mode="demo"
+        mode={mode}
+        userEmail={userEmail}
         aiSource={aiSource}
         speedMultiplier={speedMultiplier}
         isMuted={isMuted}
@@ -498,7 +538,23 @@ export const App: React.FC = () => {
         onToggleMute={handleToggleMute}
         onTogglePause={handleTogglePause}
         onToggleListMode={() => setIsListMode(!isListMode)}
+        onOpenConnect={() => setIsConsentOpen(true)}
+        onDisconnect={handleDisconnect}
       />
+
+      {/* Session Expired Banner if applicable */}
+      {sessionExpiredNotice && (
+        <div className="session-expired-banner" role="alert">
+          <span>⚠️ Your Google Drive session expired.</span>
+          <button
+            type="button"
+            className="reconnect-btn"
+            onClick={() => setIsConsentOpen(true)}
+          >
+            Reconnect Now
+          </button>
+        </div>
+      )}
 
       {/* Main Content Area */}
       <main id="main-content" className="game-viewport">
@@ -559,6 +615,13 @@ export const App: React.FC = () => {
         asteroid={guardedAsteroid}
         onCancelKeep={handleCancelKeep}
         onConfirmTrashAnyway={handleConfirmTrashAnyway}
+      />
+
+      {/* Consent Modal for Drive Connection */}
+      <ConsentModal
+        isOpen={isConsentOpen}
+        onClose={() => setIsConsentOpen(false)}
+        onConfirmConnect={handleStartOAuthConnect}
       />
 
       {/* Wave Complete End Screen */}
